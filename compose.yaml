@@ -7,6 +7,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:8000/healthcheck || exit 1"]
     command: uvicorn --factory whisperx_api_server.main:create_app
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
     ports:
       - 8000:8000
     volumes:
@@ -27,6 +29,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl --fail http://localhost:8000/healthcheck || exit 1"]
     command: uvicorn --factory whisperx_api_server.main:create_app
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
     ports:
       - 8000:8000
     volumes:
