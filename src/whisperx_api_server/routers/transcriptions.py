@@ -4,7 +4,6 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
-from pydantic import AfterValidator
 
 from whisperx_api_server import transcriber
 from whisperx_api_server.config import Language, ResponseFormat
@@ -12,15 +11,12 @@ from whisperx_api_server.dependencies import ConfigDependency
 from whisperx_api_server.formatters import format_transcription
 from whisperx_api_server.models import load_model_instance
 
-from .models import handle_default_openai_model
+from .models import ModelName
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Annotated ModelName for validation and defaults
-ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
 
 
 async def get_timestamp_granularities(request: Request) -> list[Literal["segment", "word"]]:
