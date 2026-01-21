@@ -1,31 +1,21 @@
 import logging
-import uuid
-from .models import handle_default_openai_model
-from fastapi import (
-    APIRouter,
-    UploadFile,
-    Form,
-    HTTPException,
-    Request,
-    status
-)
-from fastapi.responses import Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Literal, Annotated
-from pydantic import AfterValidator
 import time
+import uuid
+from typing import Annotated, Literal
 
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import Response
+from pydantic import AfterValidator
+from starlette.middleware.base import BaseHTTPMiddleware
 
-import whisperx_api_server.transcriber as transcriber
+from whisperx_api_server import transcriber
+from whisperx_api_server.config import Language, ResponseFormat
 from whisperx_api_server.dependencies import ConfigDependency
 from whisperx_api_server.formatters import format_transcription
-from whisperx_api_server.config import (
-    Language,
-    ResponseFormat,
-)
-from whisperx_api_server.models import (
-    load_model_instance,
-)
+from whisperx_api_server.models import load_model_instance
+
+from .models import handle_default_openai_model
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +24,7 @@ router = APIRouter()
 # Annotated ModelName for validation and defaults
 ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
 
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
@@ -41,6 +32,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
+
 
 async def get_timestamp_granularities(request: Request) -> list[Literal["segment", "word"]]:
     TIMESTAMP_GRANULARITIES_COMBINATIONS = [
@@ -54,10 +46,11 @@ async def get_timestamp_granularities(request: Request) -> list[Literal["segment
     if form.get("timestamp_granularities[]") is None:
         return ["segment"]
     timestamp_granularities = form.getlist("timestamp_granularities[]")
-    assert timestamp_granularities in TIMESTAMP_GRANULARITIES_COMBINATIONS, (
-        f"{timestamp_granularities} is not a valid value for `timestamp_granularities[]`."
-    )
+    assert (
+        timestamp_granularities in TIMESTAMP_GRANULARITIES_COMBINATIONS
+    ), f"{timestamp_granularities} is not a valid value for `timestamp_granularities[]`."
     return timestamp_granularities
+
 
 def apply_defaults(config, model, language=None, response_format=None):
     if model is None:
@@ -67,6 +60,7 @@ def apply_defaults(config, model, language=None, response_format=None):
     if response_format is None:
         response_format = config.default_response_format
     return model, language, response_format
+
 
 """
 OpenAI-like endpoint to transcribe audio files using the Whisper ASR model.
@@ -91,6 +85,8 @@ Args:
 Returns:
     Transcription: The transcription of the audio file.
 """
+
+
 @router.post(
     "/v1/audio/transcriptions",
     description="Transcribe audio files using the Whisper ASR model.",
@@ -122,7 +118,8 @@ async def transcribe_audio(
     request_id = request.state.request_id
     logger.info(f"Request ID: {request_id} - Received transcription request")
     start_time = time.time()  # Start the timer
-    logger.info(f"Request ID: {request_id} - Received request to transcribe {file.filename} with parameters: \
+    logger.info(
+        f"Request ID: {request_id} - Received request to transcribe {file.filename} with parameters: \
         model: {model}, \
         language: {language}, \
         prompt: {prompt}, \
@@ -135,19 +132,20 @@ async def transcribe_audio(
         highlight_words: {highlight_words}, \
         align: {align}, \
         diarize: {diarize}, \
-        chunk_size: {chunk_size}")
-    
+        chunk_size: {chunk_size}"
+    )
+
     if not align:
-        if response_format in ('vtt', 'srt', 'aud', 'vtt_json'):
+        if response_format in ("vtt", "srt", "aud", "vtt_json"):
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Subtitles format ('vtt', 'srt', 'aud', 'vtt_json') requires alignment to be enabled."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Subtitles format ('vtt', 'srt', 'aud', 'vtt_json') requires alignment to be enabled.",
             )
-        
+
         if diarize:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail="Diarization requires alignment to be enabled."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Diarization requires alignment to be enabled.",
             )
 
     # Determine if word timestamps are required
@@ -177,19 +175,20 @@ async def transcribe_audio(
             align=align,
             diarize=diarize,
             chunk_size=chunk_size,
-            request_id=request_id
+            request_id=request_id,
         )
     except Exception as e:
         logger.exception(f"Request ID: {request_id} - Transcription failed: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="An unexpected error occurred while processing the transcription request."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing the transcription request.",
         ) from e
 
     total_time = time.time() - start_time
     logger.info(f"Request ID: {request_id} - Transcription process took {total_time:.2f} seconds")
 
     return format_transcription(transcription, response_format, highlight_words=highlight_words)
+
 
 """
 OpenAI-like endpoint to translate audio files using the Whisper ASR model.
@@ -206,6 +205,8 @@ Args:
 Returns:
     Translation: The translation of the audio file.
 """
+
+
 @router.post(
     "/v1/audio/translations",
     description="Translate audio files using the Whisper ASR model",
@@ -225,13 +226,15 @@ async def translate_audio(
     request_id = request.state.request_id
     logger.info(f"Request ID: {request_id} - Received translation request")
     start_time = time.time()  # Start the timer
-    logger.info(f"Request ID: {request_id} - Received request to translate {file.filename} with parameters: \
+    logger.info(
+        f"Request ID: {request_id} - Received request to translate {file.filename} with parameters: \
         model: {model}, \
         prompt: {prompt}, \
         response_format: {response_format}, \
         temperature: {temperature}, \
-        chunk_size: {chunk_size}")
-    
+        chunk_size: {chunk_size}"
+    )
+
     # Build ASR options
     asr_options = {
         "initial_prompt": prompt,
@@ -251,13 +254,13 @@ async def translate_audio(
             whispermodel=model_instance,
             chunk_size=chunk_size,
             request_id=request_id,
-            task="translate"
+            task="translate",
         )
     except Exception as e:
         logger.exception(f"Request ID: {request_id} - Translation failed: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="An unexpected error occurred while processing the translation request."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing the translation request.",
         ) from e
 
     total_time = time.time() - start_time

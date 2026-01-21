@@ -18,7 +18,7 @@ def setup_logger(log_level: str) -> None:
             "default": {
                 "()": "uvicorn.logging.DefaultFormatter",
                 "fmt": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                "use_colors": True
+                "use_colors": True,
             },
         },
         "handlers": {

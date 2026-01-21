@@ -1,21 +1,19 @@
+import asyncio
 import contextlib
+import gc
+import logging
 import os
-from whisperx import transcribe as whisperx_transcribe
-from whisperx import audio as whisperx_audio
+import tempfile
+import time
+
+import torch
+from fastapi import UploadFile
 from whisperx import alignment as whisperx_alignment
+from whisperx import audio as whisperx_audio
 from whisperx import diarize as whisperx_diarize
 from whisperx import types as whisperx_types
-from fastapi import UploadFile
-import logging
-import time
-import tempfile
-import asyncio
-import torch
-import gc
 
-from whisperx_api_server.config import (
-    Language,
-)
+from whisperx_api_server.config import Language
 from whisperx_api_server.dependencies import get_config
 from whisperx_api_server.models import (
     CustomWhisperModel,
@@ -24,11 +22,13 @@ from whisperx_api_server.models import (
     load_transcribe_pipeline_cached,
 )
 
+
 logger = logging.getLogger(__name__)
 
 config = get_config()
 
 _concurrency_semaphore = None
+
 
 def _get_concurrency_semaphore() -> asyncio.Semaphore | None:
     """Return a semaphore only if running on GPU."""
@@ -40,11 +40,13 @@ def _get_concurrency_semaphore() -> asyncio.Semaphore | None:
         _concurrency_semaphore = asyncio.Semaphore(max_concurrent)
     return _concurrency_semaphore
 
+
 def _cleanup_cache_only():
     gc.collect()
-    
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
 
 async def _save_upload_to_temp(audio_file: UploadFile, request_id: str) -> str:
     loop = asyncio.get_running_loop()
@@ -58,7 +60,7 @@ async def _save_upload_to_temp(audio_file: UploadFile, request_id: str) -> str:
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{audio_file.filename}") as temp_file:
             temp_file.write(data)
             return temp_file.name
-        
+
     try:
         file_path = await loop.run_in_executor(None, _write_temp_file, file_bytes)
     except Exception as e:
@@ -78,6 +80,7 @@ async def _load_audio(file_path: str, request_id: str):
         logger.error(f"Request ID: {request_id} - Failed to load audio: {e}")
         raise
 
+
 async def _transcribe_audio(model, audio, batch_size, chunk_size, language, task, request_id):
     loop = asyncio.get_running_loop()
 
@@ -95,7 +98,7 @@ async def _transcribe_audio(model, audio, batch_size, chunk_size, language, task
     result = await loop.run_in_executor(None, _run_transcription)
 
     logger.info(f"Request ID: {request_id} - Transcription completed")
-    return result  
+    return result
 
 
 async def _align_audio(result, audio, whispermodel, request_id):
@@ -105,7 +108,9 @@ async def _align_audio(result, audio, whispermodel, request_id):
         logger.info(f"Request ID: {request_id} - Loading alignment model")
         model_a, metadata = await load_align_model_cached(language_code=result["language"])
         logger.info(f"Request ID: {request_id} - Alignment model loaded")
-        logger.info(f"Request ID: {request_id} - Loading alignment model took {time.time() - alignment_model_start:.2f} seconds")
+        logger.info(
+            f"Request ID: {request_id} - Loading alignment model took {time.time() - alignment_model_start:.2f} seconds"
+        )
 
         def _run_alignment():
             with torch.inference_mode():
@@ -115,8 +120,9 @@ async def _align_audio(result, audio, whispermodel, request_id):
                     align_model_metadata=metadata,
                     audio=audio,
                     device=whispermodel.device,
-                    return_char_alignments=False
+                    return_char_alignments=False,
                 )
+
         alignment_start = time.time()
         result["segments"] = await loop.run_in_executor(None, _run_alignment)
         logger.info(f"Request ID: {request_id} - Alignment took {time.time() - alignment_start:.2f} seconds")
@@ -132,11 +138,14 @@ async def _diarize_audio(result, audio, request_id):
         diarization_model_start = time.time()
         logger.info(f"Request ID: {request_id} - Loading diarization model")
         diarize_model = await load_diarize_model_cached(model_name="tensorlake/speaker-diarization-3.1")
-        logger.info(f"Request ID: {request_id} - Diarization model loaded. Loading took {time.time() - diarization_model_start:.2f} seconds. Starting diarization")
+        logger.info(
+            f"Request ID: {request_id} - Diarization model loaded. Loading took {time.time() - diarization_model_start:.2f} seconds. Starting diarization"
+        )
 
         def _run_diarization():
             with torch.inference_mode():
                 return diarize_model(audio)
+
         diarize_start = time.time()
         diarize_segments = await loop.run_in_executor(None, _run_diarization)
         result["segments"] = whisperx_diarize.assign_word_speakers(diarize_segments, result["segments"])
@@ -146,13 +155,15 @@ async def _diarize_audio(result, audio, request_id):
         logger.error(f"Request ID: {request_id} - Diarization failed: {e}")
         raise
 
+
 def _finalize_text(result, align_or_diarize: bool):
     segments = result.get("segments", [])
     if align_or_diarize and isinstance(segments, dict):
         segments = segments.get("segments", [])
 
-    result["text"] = '\n'.join([s.get("text", "").strip() for s in segments if s.get("text")])
+    result["text"] = "\n".join([s.get("text", "").strip() for s in segments if s.get("text")])
     return result
+
 
 async def transcribe(
     audio_file: UploadFile,
@@ -179,8 +190,10 @@ async def transcribe(
             await concurrency_sem.acquire()
             logger.debug(f"Request ID: {request_id} - Acquired GPU concurrency semaphore")
 
-        logger.info(f"Request ID: {request_id} - Transcribing {audio_file.filename} with model: {whispermodel.model_size_or_path} and options: {asr_options}, language: {language}, task: {task}")
-        
+        logger.info(
+            f"Request ID: {request_id} - Transcribing {audio_file.filename} with model: {whispermodel.model_size_or_path} and options: {asr_options}, language: {language}, task: {task}"
+        )
+
         model_loading_start = time.time()
 
         model = await load_transcribe_pipeline_cached(
@@ -189,12 +202,14 @@ async def transcribe(
             task=task,
         )
 
-        logger.info(f"Request ID: {request_id} - Loading model took {time.time() - model_loading_start:.2f} seconds (cached)")
+        logger.info(
+            f"Request ID: {request_id} - Loading model took {time.time() - model_loading_start:.2f} seconds (cached)"
+        )
 
         audio_loading_start = time.time()
 
         audio = await _load_audio(file_path, request_id)
-        
+
         logger.info(f"Request ID: {request_id} - Loading audio took {time.time() - audio_loading_start:.2f} seconds")
 
         transcription_start = time.time()

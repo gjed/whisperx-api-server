@@ -1,18 +1,19 @@
-import logging
 import asyncio
 import contextlib
-import torch
 import gc
-from collections import defaultdict
+import logging
 from asyncio import Lock
-from typing import Union, List, Optional, Tuple, Any
+from collections import defaultdict
+from typing import Any
 
-from whisperx import asr as whisperx_asr
-from whisperx import transcribe as whisperx_transcribe
+import torch
 from whisperx import alignment as whisperx_alignment
+from whisperx import asr as whisperx_asr
 from whisperx import diarize as whisperx_diarize
+from whisperx import transcribe as whisperx_transcribe
 
 from whisperx_api_server.dependencies import get_config
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ alignment_cache_mod_lock = Lock()
 transcribe_pipeline_instances = {}
 transcribe_locks = defaultdict(Lock)
 
+
 def unload_model_object(model_obj: Any):
     if model_obj is None:
         return
@@ -45,16 +47,17 @@ def unload_model_object(model_obj: Any):
     gc.collect()
     torch.cuda.empty_cache()
 
+
 class CustomWhisperModel(whisperx_asr.WhisperModel):
     def __init__(
         self,
         model_size_or_path: str,
         device: str = "auto",
-        device_index: Union[int, List[int]] = 0,
+        device_index: int | list[int] = 0,
         compute_type: str = "default",
         cpu_threads: int = 0,
         num_workers: int = 1,
-        download_root: Optional[str] = None,
+        download_root: str | None = None,
         local_files_only: bool = False,
         files: dict = None,
         **model_kwargs,
@@ -69,7 +72,7 @@ class CustomWhisperModel(whisperx_asr.WhisperModel):
             download_root=download_root,
             local_files_only=local_files_only,
             files=files,
-            **model_kwargs
+            **model_kwargs,
         )
         self.model_size_or_path = model_size_or_path
         self.device = device
@@ -119,7 +122,7 @@ def initialize_model(model_name: str) -> CustomWhisperModel:
         cpu_threads=config.whisper.cpu_threads,
         num_workers=config.whisper.num_workers,
         local_files_only=config.whisper.local_files_only,
-        download_root=config.whisper.download_root
+        download_root=config.whisper.download_root,
     )
 
 
@@ -163,6 +166,7 @@ async def load_model_instance(model_name: str):
         init_func=lambda: asyncio.to_thread(initialize_model, model_name),
     )
 
+
 # -------------------------------------------------------------------------
 # Transcribe pipeline loading
 # -------------------------------------------------------------------------
@@ -175,9 +179,10 @@ def _hashable_vad_options(vad_options: Any) -> Any:
         return tuple(_hashable_vad_options(v) for v in vad_options)
     return vad_options
 
+
 async def load_transcribe_pipeline_cached(
     whispermodel: CustomWhisperModel,
-    language: Optional[str] = None,
+    language: str | None = None,
     task: str = "transcribe",
 ):
     config = get_config()
@@ -219,6 +224,7 @@ async def load_transcribe_pipeline_cached(
 
     return pipeline
 
+
 # -------------------------------------------------------------------------
 # Alignment model loading
 # -------------------------------------------------------------------------
@@ -234,7 +240,7 @@ async def _cleanup_alignment_cache_whitelist():
         return
 
     async with alignment_cache_mod_lock:
-        for key in list(align_model_instances.keys()): # noqa: S7504
+        for key in list(align_model_instances.keys()):
             if key not in whitelist:
                 logger.info(f"Unloading alignment model for {key} (not in whitelist).")
                 align_model_data = align_model_instances.pop(key, None)
@@ -242,11 +248,10 @@ async def _cleanup_alignment_cache_whitelist():
                     unload_model_object(align_model_data.get("model"))
                     del align_model_data
 
+
 async def load_align_model_cached(
-    language_code: str,
-    model_name: Optional[str] = None,
-    model_dir: Optional[str] = None
-) -> Tuple[Any, Any]:
+    language_code: str, model_name: str | None = None, model_dir: str | None = None
+) -> tuple[Any, Any]:
     """
     Loads and caches alignment models based on language codes (or "multilingual")
     while respecting the config whitelisting and caching settings.
@@ -267,8 +272,7 @@ async def load_align_model_cached(
         logger.info(f"Using configured alignment model for '{language_code}': {selected_model_name}")
 
     # Decide how to key the cache
-    if (selected_model_name is not None
-        and selected_model_name == config.alignment.models.get("multilingual")):
+    if selected_model_name is not None and selected_model_name == config.alignment.models.get("multilingual"):
         cache_key = "multilingual"
     else:
         cache_key = language_code
@@ -285,8 +289,8 @@ async def load_align_model_cached(
                     language_code=language_code,
                     device=inference_device,
                     model_name=selected_model_name,
-                    model_dir=model_dir
-                )
+                    model_dir=model_dir,
+                ),
             )
         except Exception as e:
             logger.error(f"Failed to load alignment model for language '{language_code}': {e}")

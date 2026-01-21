@@ -11,12 +11,14 @@ class ResponseFormat(str, Enum):
     VTT_JSON = "vtt_json"
     SRT = "srt"
     VTT = "vtt"
-    AUD = "aud" # Audacity
+    AUD = "aud"  # Audacity
+
 
 class MediaType(str, Enum):
     APPLICATION_JSON = "application/json"
     TEXT_PLAIN = "text/plain"
     TEXT_VTT = "text/vtt"
+
 
 class Language(str, Enum):
     AF = "af"
@@ -120,6 +122,7 @@ class Language(str, Enum):
     YUE = "yue"
     ZH = "zh"
 
+
 # https://github.com/OpenNMT/CTranslate2/blob/master/docs/quantization.md
 class Quantization(str, Enum):
     INT8 = "int8"
@@ -138,9 +141,11 @@ class Device(str, Enum):
     CUDA = "cuda"
     AUTO = "auto"
 
+
 class VadMethod(str, Enum):
     SILERO = "silero"
     PYANNOTE = "pyannote"
+
 
 class WhisperConfig(BaseModel):
     """See https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/transcribe.py#L599."""
@@ -166,15 +171,18 @@ class WhisperConfig(BaseModel):
     local_files_only: bool = Field(default=False)
     download_root: str = Field(default=None)
 
+
 class AlignConfig(BaseModel):
     models: dict = Field(default_factory=dict)
     whitelist: list = Field(default_factory=list)
     cache: bool = Field(default=True)
     preload_model: str = Field(default=None)
 
+
 class DiarizeConfig(BaseModel):
     cache: bool = Field(default=True)
     preload_model: str = Field(default=None)
+
 
 class Config(BaseSettings):
     """

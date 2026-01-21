@@ -1,32 +1,29 @@
 import logging
+from typing import Annotated
+
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse
-from typing import Annotated
 from pydantic import AfterValidator
 
-import whisperx_api_server.transcriber as transcriber
+from whisperx_api_server.config import Language, MediaType
 from whisperx_api_server.dependencies import get_config
-from whisperx_api_server.config import (
-    Language,
-    MediaType,
-)
 from whisperx_api_server.models import (
-    load_model_instance,
-    load_align_model_cached,
-    load_diarize_model_cached,
-    model_instances,
     align_model_instances,
     diarize_model_instances,
+    load_align_model_cached,
+    load_diarize_model_cached,
+    load_model_instance,
+    model_instances,
     unload_model_object,
 )
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-def handle_default_openai_model(
-        model_name: str
-    ) -> str:
+
+def handle_default_openai_model(model_name: str) -> str:
     """Adjust the model name if it defaults to 'whisper-1'."""
     config = get_config()
     if model_name == "whisper-1":
@@ -34,7 +31,9 @@ def handle_default_openai_model(
         return config.whisper.model
     return model_name
 
+
 ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
+
 
 @router.get(
     "/models/list",
@@ -44,6 +43,7 @@ ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
 def list_models():
     global model_instances
     return JSONResponse(content={"models": list(model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+
 
 @router.post(
     "/models/unload",
@@ -63,6 +63,7 @@ def unload_model(model: Annotated[ModelName, Form()]):
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, media_type=MediaType.APPLICATION_JSON)
 
+
 @router.post(
     "/models/load",
     description="Load a model",
@@ -75,6 +76,7 @@ async def load_model(model: Annotated[ModelName, Form()]):
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, media_type=MediaType.APPLICATION_JSON)
 
+
 @router.get(
     "/align_models/list",
     description="List loaded align models",
@@ -83,6 +85,7 @@ async def load_model(model: Annotated[ModelName, Form()]):
 def list_align_models():
     global align_model_instances
     return JSONResponse(content={"models": list(align_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+
 
 @router.post(
     "/align_models/unload",
@@ -103,6 +106,7 @@ def unload_align_model(language: Annotated[Language, Form()]):
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, media_type=MediaType.APPLICATION_JSON)
 
+
 @router.post(
     "/align_models/load",
     description="Load an align model",
@@ -114,7 +118,8 @@ async def load_align_model(language: Annotated[Language, Form()]):
         return JSONResponse(content={"status": "success", "model": language}, media_type=MediaType.APPLICATION_JSON)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, media_type=MediaType.APPLICATION_JSON)
-    
+
+
 @router.get(
     "/diarize_models/list",
     description="List loaded diarize models",
@@ -123,6 +128,7 @@ async def load_align_model(language: Annotated[Language, Form()]):
 def list_diarize_models():
     global diarize_model_instances
     return JSONResponse(content={"models": list(diarize_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+
 
 @router.post(
     "/diarize_models/unload",
@@ -141,6 +147,7 @@ def unload_diarize_model(model: Annotated[ModelName, Form()]):
         return JSONResponse(content=response_data, media_type=MediaType.APPLICATION_JSON)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, media_type=MediaType.APPLICATION_JSON)
+
 
 @router.post(
     "/diarize_models/load",

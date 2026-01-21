@@ -1,14 +1,15 @@
 import logging
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from whisperx_api_server.config import (
-    MediaType,
-)
+from whisperx_api_server.config import MediaType
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 @router.get(
     "/healthcheck",
