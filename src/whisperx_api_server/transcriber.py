@@ -169,7 +169,7 @@ async def transcribe(
     audio_file: UploadFile,
     batch_size: int = config.batch_size,
     chunk_size: int = 30,
-    asr_options: dict = {},
+    asr_options: dict | None = None,
     language: Language = config.default_language,
     whispermodel: CustomWhisperModel = config.whisper.model,
     align: bool = False,
@@ -177,6 +177,9 @@ async def transcribe(
     request_id: str = "",
     task: str = "transcribe",
 ) -> whisperx_types.TranscriptionResult:
+    if asr_options is None:
+        asr_options = {}
+
     start_time = time.time()
     file_path = None
     audio = None

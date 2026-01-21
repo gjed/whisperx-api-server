@@ -1,12 +1,10 @@
 import logging
 import time
-import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from pydantic import AfterValidator
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from whisperx_api_server import transcriber
 from whisperx_api_server.config import Language, ResponseFormat
@@ -23,15 +21,6 @@ router = APIRouter()
 
 # Annotated ModelName for validation and defaults
 ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
-
-
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
 
 
 async def get_timestamp_granularities(request: Request) -> list[Literal["segment", "word"]]:
@@ -138,13 +127,13 @@ async def transcribe_audio(
     if not align:
         if response_format in ("vtt", "srt", "aud", "vtt_json"):
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Subtitles format ('vtt', 'srt', 'aud', 'vtt_json') requires alignment to be enabled.",
             )
 
         if diarize:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Diarization requires alignment to be enabled.",
             )
 

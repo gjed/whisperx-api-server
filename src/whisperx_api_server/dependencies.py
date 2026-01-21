@@ -1,6 +1,7 @@
 import json
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -21,20 +22,32 @@ security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=1)
+def _load_api_keys_cached(file_path: str, file_mtime: float) -> dict[str, str]:
+    """Load and cache API keys from file. Cache is invalidated when file modification time changes."""
+    with open(file_path) as f:
+        return json.load(f)
+
+
+def _get_api_keys(api_keys_file: str | None) -> dict[str, str]:
+    """Get API keys with caching based on file modification time."""
+    if not api_keys_file:
+        return {}
+    try:
+        mtime = Path(api_keys_file).stat().st_mtime
+        return _load_api_keys_cached(api_keys_file, mtime)
+    except FileNotFoundError:
+        logger.error(f"API keys file not found: {api_keys_file}")
+        return {}
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in API keys file: {e}")
+        return {}
+
+
 async def verify_api_key(
     config: ConfigDependency, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
 ) -> None:
-    api_keys = {}
-
-    if config.api_keys_file:
-        try:
-            with open(config.api_keys_file) as f:
-                api_keys = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="API keys file error",
-            ) from e
+    api_keys = _get_api_keys(config.api_keys_file)
 
     client_name = api_keys.get(credentials.credentials)
 

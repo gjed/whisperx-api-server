@@ -10,6 +10,9 @@ __pycache__/
 # Custom
 models
 compose-dev.yaml
+
+# API keys - never commit actual keys
+src/whisperx_api_server/api-keys/keys.json
 Dockerfile.cuda-dev
 scripts
 whisperx/

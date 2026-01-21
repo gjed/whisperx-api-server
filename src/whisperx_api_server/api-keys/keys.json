@@ -1,4 +1,0 @@
-{
-    "_comment": "Add API keys in format: \"api-key\": \"client-name\"",
-    "_example": "some-key: some-client"
-}
