@@ -8,12 +8,10 @@ from pydantic import AfterValidator
 from whisperx_api_server.config import Language, MediaType
 from whisperx_api_server.dependencies import get_config
 from whisperx_api_server.models import (
-    align_model_instances,
-    diarize_model_instances,
+    get_model_cache,
     load_align_model_cached,
     load_diarize_model_cached,
     load_model_instance,
-    model_instances,
     unload_model_object,
 )
 
@@ -41,8 +39,8 @@ ModelName = Annotated[str, AfterValidator(handle_default_openai_model)]
     tags=["models", "transcribe"],
 )
 def list_models():
-    global model_instances
-    return JSONResponse(content={"models": list(model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+    cache = get_model_cache()
+    return JSONResponse(content={"models": list(cache.model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
 
 
 @router.post(
@@ -52,8 +50,9 @@ def list_models():
 )
 def unload_model(model: Annotated[ModelName, Form()]):
     try:
-        if model in model_instances:
-            model_data = model_instances.pop(model, None)
+        cache = get_model_cache()
+        if model in cache.model_instances:
+            model_data = cache.model_instances.pop(model, None)
             if model_data is not None:
                 unload_model_object(model_data)
             response_data = {"status": "success"}
@@ -83,8 +82,10 @@ async def load_model(model: Annotated[ModelName, Form()]):
     tags=["models", "align"],
 )
 def list_align_models():
-    global align_model_instances
-    return JSONResponse(content={"models": list(align_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+    cache = get_model_cache()
+    return JSONResponse(
+        content={"models": list(cache.align_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON
+    )
 
 
 @router.post(
@@ -94,8 +95,9 @@ def list_align_models():
 )
 def unload_align_model(language: Annotated[Language, Form()]):
     try:
-        if language in align_model_instances:
-            align_model_data = align_model_instances.pop(language, None)
+        cache = get_model_cache()
+        if language in cache.align_model_instances:
+            align_model_data = cache.align_model_instances.pop(language, None)
             if align_model_data is not None:
                 unload_model_object(align_model_data.get("model"))
                 del align_model_data
@@ -126,8 +128,10 @@ async def load_align_model(language: Annotated[Language, Form()]):
     tags=["models", "diarize"],
 )
 def list_diarize_models():
-    global diarize_model_instances
-    return JSONResponse(content={"models": list(diarize_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON)
+    cache = get_model_cache()
+    return JSONResponse(
+        content={"models": list(cache.diarize_model_instances.keys())}, media_type=MediaType.APPLICATION_JSON
+    )
 
 
 @router.post(
@@ -137,8 +141,9 @@ def list_diarize_models():
 )
 def unload_diarize_model(model: Annotated[ModelName, Form()]):
     try:
-        if model in diarize_model_instances:
-            diarize_model_data = diarize_model_instances.pop(model, None)
+        cache = get_model_cache()
+        if model in cache.diarize_model_instances:
+            diarize_model_data = cache.diarize_model_instances.pop(model, None)
             if diarize_model_data is not None:
                 unload_model_object(diarize_model_data)
             response_data = {"status": "success"}

@@ -16,21 +16,81 @@ from whisperx_api_server.dependencies import get_config
 
 logger = logging.getLogger(__name__)
 
-# Global caches
-model_instances = {}
-model_locks = defaultdict(Lock)
 
-align_model_instances = {}
-alignment_locks = defaultdict(Lock)
+class ModelCache:
+    """Singleton class to encapsulate all model caching state.
 
-diarize_model_instances = {}
-diarization_locks = defaultdict(Lock)
+    This class manages the lifecycle of various ML models including:
+    - Whisper ASR models
+    - Transcription pipelines
+    - Alignment models
+    - Diarization models
 
-alignment_cache_mod_lock = Lock()
+    Each model type has its own cache dict and associated locks for thread-safe access.
+    """
 
-# Transcribe pipeline cache
-transcribe_pipeline_instances = {}
-transcribe_locks = defaultdict(Lock)
+    _instance: "ModelCache | None" = None
+
+    def __new__(cls) -> "ModelCache":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialize()
+        return cls._instance
+
+    def _initialize(self) -> None:
+        """Initialize all cache dictionaries and locks."""
+        # Whisper model cache
+        self.model_instances: dict[str, Any] = {}
+        self.model_locks: defaultdict[str, Lock] = defaultdict(Lock)
+
+        # Alignment model cache
+        self.align_model_instances: dict[str, dict[str, Any]] = {}
+        self.alignment_locks: defaultdict[str, Lock] = defaultdict(Lock)
+        self.alignment_cache_mod_lock: Lock = Lock()
+
+        # Diarization model cache
+        self.diarize_model_instances: dict[str, Any] = {}
+        self.diarization_locks: defaultdict[str, Lock] = defaultdict(Lock)
+
+        # Transcribe pipeline cache
+        self.transcribe_pipeline_instances: dict[str, Any] = {}
+        self.transcribe_locks: defaultdict[str, Lock] = defaultdict(Lock)
+
+    @classmethod
+    def get_instance(cls) -> "ModelCache":
+        """Get the singleton instance of ModelCache."""
+        return cls()
+
+    def clear_all(self) -> None:
+        """Clear all cached models and release GPU memory.
+
+        Warning: This does not acquire locks, so it should only be called
+        when no other operations are in progress.
+        """
+        for model in list(self.model_instances.values()):
+            unload_model_object(model)
+        self.model_instances.clear()
+
+        for data in list(self.align_model_instances.values()):
+            unload_model_object(data.get("model"))
+        self.align_model_instances.clear()
+
+        for model in list(self.diarize_model_instances.values()):
+            unload_model_object(model)
+        self.diarize_model_instances.clear()
+
+        for pipeline in list(self.transcribe_pipeline_instances.values()):
+            unload_model_object(pipeline)
+        self.transcribe_pipeline_instances.clear()
+
+
+# Create module-level singleton instance for easy access
+_model_cache = ModelCache.get_instance()
+
+
+def get_model_cache() -> ModelCache:
+    """Get the global ModelCache singleton instance."""
+    return _model_cache
 
 
 def unload_model_object(model_obj: Any) -> None:
@@ -168,10 +228,11 @@ async def load_model_instance(model_name: str):
     """
     Async function to get the main Whisper model instance from cache, or initialize if needed.
     """
+    cache = get_model_cache()
     return await _get_or_init_model(
         key=model_name,
-        cache_dict=model_instances,
-        lock_dict=model_locks,
+        cache_dict=cache.model_instances,
+        lock_dict=cache.model_locks,
         init_func=lambda: asyncio.to_thread(initialize_model, model_name),
     )
 
@@ -195,6 +256,7 @@ async def load_transcribe_pipeline_cached(
     task: str = "transcribe",
 ):
     config = get_config()
+    cache = get_model_cache()
     key = (
         whispermodel.model_size_or_path,
         whispermodel.device,
@@ -218,15 +280,15 @@ async def load_transcribe_pipeline_cached(
 
     pipeline = await _get_or_init_model(
         key=str(key),
-        cache_dict=transcribe_pipeline_instances,
-        lock_dict=transcribe_locks,
+        cache_dict=cache.transcribe_pipeline_instances,
+        lock_dict=cache.transcribe_locks,
         init_func=lambda: asyncio.to_thread(_init_pipeline),
         log_reuse="Reusing cached transcribe pipeline: {key}",
         log_init="Initializing transcribe pipeline: {key}",
     )
 
     if not config.whisper.cache:
-        removed = transcribe_pipeline_instances.pop(str(key), None)
+        removed = cache.transcribe_pipeline_instances.pop(str(key), None)
         if removed is not None:
             logger.info(f"Unloading transcribe pipeline from cache (disabled): {key}")
             unload_model_object(removed)
@@ -240,19 +302,20 @@ async def load_transcribe_pipeline_cached(
 async def _cleanup_alignment_cache_whitelist():
     """
     If config.alignment.whitelist is set, remove any alignment models from
-    `align_model_instances` that are not in the whitelist.
+    the cache that are not in the whitelist.
     This happens under a dedicated lock to avoid race conditions.
     """
     config = get_config()
+    cache = get_model_cache()
     whitelist = config.alignment.whitelist
     if not whitelist:
         return
 
-    async with alignment_cache_mod_lock:
-        for key in list(align_model_instances.keys()):
+    async with cache.alignment_cache_mod_lock:
+        for key in list(cache.align_model_instances.keys()):
             if key not in whitelist:
                 logger.info(f"Unloading alignment model for {key} (not in whitelist).")
-                align_model_data = align_model_instances.pop(key, None)
+                align_model_data = cache.align_model_instances.pop(key, None)
                 if align_model_data is not None:
                     unload_model_object(align_model_data.get("model"))
                     del align_model_data
@@ -266,6 +329,7 @@ async def load_align_model_cached(
     while respecting the config whitelisting and caching settings.
     """
     config = get_config()
+    cache = get_model_cache()
 
     # Clean up out-of-whitelist models
     await _cleanup_alignment_cache_whitelist()
@@ -310,8 +374,8 @@ async def load_align_model_cached(
     # Fetch or initialize the alignment model under a lock:
     model_data = await _get_or_init_model(
         key=cache_key,
-        cache_dict=align_model_instances,
-        lock_dict=alignment_locks,
+        cache_dict=cache.align_model_instances,
+        lock_dict=cache.alignment_locks,
         init_func=_init_alignment,
         log_reuse="Reusing cached alignment model for key: {key}",
         log_init="Initializing alignment model for key: {key}",
@@ -319,8 +383,8 @@ async def load_align_model_cached(
 
     # If caching is disabled, remove it immediately and free GPU memory
     if not config.alignment.cache:
-        async with alignment_cache_mod_lock:
-            removed_data = align_model_instances.pop(cache_key, None)
+        async with cache.alignment_cache_mod_lock:
+            removed_data = cache.align_model_instances.pop(cache_key, None)
             if removed_data is not None:
                 logger.info(f"Unloading alignment model from cache (disabled): {cache_key}")
                 model_obj = removed_data.get("model")
@@ -340,6 +404,7 @@ async def load_diarize_model_cached(model_name: str):
     Clears from cache after use if `config.diarization.cache` is False.
     """
     config = get_config()
+    cache = get_model_cache()
     inference_device = _determine_inference_device()
 
     def _init_diarization():
@@ -348,8 +413,8 @@ async def load_diarize_model_cached(model_name: str):
 
     diarize_model = await _get_or_init_model(
         key=model_name,
-        cache_dict=diarize_model_instances,
-        lock_dict=diarization_locks,
+        cache_dict=cache.diarize_model_instances,
+        lock_dict=cache.diarization_locks,
         init_func=lambda: asyncio.to_thread(_init_diarization),
         log_reuse="Reusing cached diarization model for: {key}",
         log_init="Initializing diarization model: {key}",
@@ -357,7 +422,7 @@ async def load_diarize_model_cached(model_name: str):
 
     if not config.diarization.cache:
         # Immediately remove from cache, unload from GPU memory
-        removed_model = diarize_model_instances.pop(model_name, None)
+        removed_model = cache.diarize_model_instances.pop(model_name, None)
         if removed_model is not None:
             logger.info(f"Unloading diarization model from cache (disabled): {model_name}")
             unload_model_object(removed_model)
