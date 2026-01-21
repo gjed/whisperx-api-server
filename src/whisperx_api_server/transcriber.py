@@ -25,8 +25,6 @@ from whisperx_api_server.models import (
 
 logger = logging.getLogger(__name__)
 
-config = get_config()
-
 _concurrency_semaphore = None
 
 
@@ -81,7 +79,7 @@ async def _load_audio(file_path: str, request_id: str):
         raise
 
 
-async def _transcribe_audio(model, audio, batch_size, chunk_size, language, task, request_id):
+async def _transcribe_audio(model, audio, batch_size, chunk_size, language, task, request_id, num_workers: int):
     loop = asyncio.get_running_loop()
 
     def _run_transcription():
@@ -90,7 +88,7 @@ async def _transcribe_audio(model, audio, batch_size, chunk_size, language, task
                 audio=audio,
                 batch_size=batch_size,
                 chunk_size=chunk_size,
-                num_workers=config.whisper.num_workers,
+                num_workers=num_workers,
                 language=language,
                 task=task,
             )
@@ -165,20 +163,45 @@ def _finalize_text(result, align_or_diarize: bool):
     return result
 
 
+def _cleanup_transcription_resources(
+    concurrency_sem: asyncio.Semaphore | None,
+    file_path: str | None,
+    audio,
+    config,
+    request_id: str,
+) -> None:
+    """Clean up resources after transcription completes or fails."""
+    with contextlib.suppress(Exception):
+        if concurrency_sem:
+            concurrency_sem.release()
+    with contextlib.suppress(Exception):
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+    if config.audio_cleanup and audio is not None:
+        del audio
+        logger.info(f"Request ID: {request_id} - Audio data cleaned up")
+    if config.cache_cleanup:
+        _cleanup_cache_only()
+        logger.info(f"Request ID: {request_id} - Cache cleanup completed")
+
+
 async def transcribe(
     audio_file: UploadFile,
-    batch_size: int = config.batch_size,
+    batch_size: int | None = None,
     chunk_size: int = 30,
     asr_options: dict | None = None,
-    language: Language = config.default_language,
-    whispermodel: CustomWhisperModel = config.whisper.model,
+    language: Language | None = None,
+    whispermodel: CustomWhisperModel | str | None = None,
     align: bool = False,
     diarize: bool = False,
     request_id: str = "",
     task: str = "transcribe",
 ) -> whisperx_types.TranscriptionResult:
-    if asr_options is None:
-        asr_options = {}
+    config = get_config()
+    asr_options = asr_options or {}
+    batch_size = batch_size if batch_size is not None else config.batch_size
+    language = language if language is not None else config.default_language
+    whispermodel = whispermodel if whispermodel is not None else config.whisper.model
 
     start_time = time.time()
     file_path = None
@@ -193,8 +216,9 @@ async def transcribe(
             await concurrency_sem.acquire()
             logger.debug(f"Request ID: {request_id} - Acquired GPU concurrency semaphore")
 
+        model_name = whispermodel.model_size_or_path if isinstance(whispermodel, CustomWhisperModel) else whispermodel
         logger.info(
-            f"Request ID: {request_id} - Transcribing {audio_file.filename} with model: {whispermodel.model_size_or_path} and options: {asr_options}, language: {language}, task: {task}"
+            f"Request ID: {request_id} - Transcribing {audio_file.filename} with model: {model_name} and options: {asr_options}, language: {language}, task: {task}"
         )
 
         model_loading_start = time.time()
@@ -217,7 +241,9 @@ async def transcribe(
 
         transcription_start = time.time()
 
-        result = await _transcribe_audio(model, audio, batch_size, chunk_size, language, task, request_id)
+        result = await _transcribe_audio(
+            model, audio, batch_size, chunk_size, language, task, request_id, config.whisper.num_workers
+        )
 
         logger.info(f"Request ID: {request_id} - Transcription took {time.time() - transcription_start:.2f} seconds")
 
@@ -236,15 +262,4 @@ async def transcribe(
         logger.error(f"Request ID: {request_id} - Transcription failed for {audio_file.filename} with error: {e}")
         raise
     finally:
-        with contextlib.suppress(Exception):
-            if concurrency_sem:
-                concurrency_sem.release()
-        with contextlib.suppress(Exception):
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-        if config.audio_cleanup and audio is not None:
-            del audio
-            logger.info(f"Request ID: {request_id} - Audio data cleaned up")
-        if config.cache_cleanup:
-            _cleanup_cache_only()
-            logger.info(f"Request ID: {request_id} - Cache cleanup completed")
+        _cleanup_transcription_resources(concurrency_sem, file_path, audio, config, request_id)
