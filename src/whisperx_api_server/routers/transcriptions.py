@@ -47,31 +47,6 @@ def apply_defaults(config, model, language=None, response_format=None):
     return model, language, response_format
 
 
-"""
-OpenAI-like endpoint to transcribe audio files using the Whisper ASR model.
-
-Args:
-    request (Request): The HTTP request object.
-    file (UploadFile): The audio file to transcribe.
-    model (ModelName): The model to use for the transcription.
-    language (Language): The language to use for the transcription. Defaults to "en".
-    prompt (str): The prompt to use for the transcription.
-    response_format (ResponseFormat): The response format to use for the transcription. Defaults to "json".
-    temperature (float): The temperature to use for the transcription. Defaults to 0.0.
-    timestamp_granularities (list[Literal["segment", "word"]]): The timestamp granularities to use for the transcription. Defaults to ["segment"].
-    stream (bool): Whether to enable streaming mode. Defaults to False.
-    hotwords (str): The hotwords to use for the transcription.
-    suppress_numerals (bool): Whether to suppress numerals in the transcription. Defaults to True.
-    highlight_words (bool): Whether to highlight words in the transcription (Applies only to VTT and SRT). Defaults to False.
-    align (bool): Whether to do transcription timings alignment. Defaults to True.
-    diarize (bool): Whether to diarize the transcription. Defaults to False.
-    chunk_size (int): Chunk size in seconds for merging VAD segments. Defaults to 30.
-
-Returns:
-    Transcription: The transcription of the audio file.
-"""
-
-
 @router.post(
     "/v1/audio/transcriptions",
     description="Transcribe audio files using the Whisper ASR model.",
@@ -98,6 +73,29 @@ async def transcribe_audio(
     diarize: Annotated[bool, Form()] = False,
     chunk_size: Annotated[int, Form()] = 30,
 ) -> Response:
+    """Transcribe audio files using the Whisper ASR model (OpenAI-compatible).
+
+    Args:
+        config: Application configuration.
+        request: The HTTP request object.
+        file: The audio file to transcribe.
+        model: The model to use for the transcription.
+        language: The language to use for the transcription.
+        prompt: The prompt to use for the transcription.
+        response_format: The response format to use for the transcription.
+        temperature: The temperature to use for the transcription. Defaults to 0.0.
+        timestamp_granularities: The timestamp granularities. Defaults to ["segment"].
+        stream: Whether to enable streaming mode. Defaults to False.
+        hotwords: The hotwords to use for the transcription.
+        suppress_numerals: Whether to suppress numerals. Defaults to True.
+        highlight_words: Whether to highlight words (VTT/SRT only). Defaults to False.
+        align: Whether to do transcription timings alignment. Defaults to True.
+        diarize: Whether to diarize the transcription. Defaults to False.
+        chunk_size: Chunk size in seconds for merging VAD segments. Defaults to 30.
+
+    Returns:
+        Response: The transcription in the requested format.
+    """
     model, language, response_format = apply_defaults(config, model, language, response_format)
     timestamp_granularities = await get_timestamp_granularities(request)
     request_id = request.state.request_id
@@ -168,23 +166,6 @@ async def transcribe_audio(
     return format_transcription(transcription, response_format, highlight_words=highlight_words)
 
 
-"""
-OpenAI-like endpoint to translate audio files using the Whisper ASR model.
-
-Args:
-    request (Request): The HTTP request object.
-    file (UploadFile): The audio file to translate.
-    model (ModelName): The model to use for the translation.
-    prompt (str): The prompt to use for the translation.
-    response_format (ResponseFormat): The response format to use for the translation. Defaults to "json".
-    temperature (float): The temperature to use for the translation. Defaults to 0.0.
-    chunk_size (int): Chunk size in seconds for merging VAD segments. Defaults to 30.
-
-Returns:
-    Translation: The translation of the audio file.
-"""
-
-
 @router.post(
     "/v1/audio/translations",
     description="Translate audio files using the Whisper ASR model",
@@ -200,6 +181,21 @@ async def translate_audio(
     temperature: Annotated[float, Form()] = 0.0,
     chunk_size: Annotated[int, Form()] = 30,
 ) -> Response:
+    """Translate audio files using the Whisper ASR model (OpenAI-compatible).
+
+    Args:
+        config: Application configuration.
+        request: The HTTP request object.
+        file: The audio file to translate.
+        model: The model to use for the translation.
+        prompt: The prompt to use for the translation.
+        response_format: The response format to use. Defaults to "json".
+        temperature: The temperature to use for the translation. Defaults to 0.0.
+        chunk_size: Chunk size in seconds for merging VAD segments. Defaults to 30.
+
+    Returns:
+        Response: The translation in the requested format.
+    """
     model, _, response_format = apply_defaults(config, model, language=None, response_format=response_format)
     request_id = request.state.request_id
     logger.info(f"Request ID: {request_id} - Received translation request for {file.filename}")
