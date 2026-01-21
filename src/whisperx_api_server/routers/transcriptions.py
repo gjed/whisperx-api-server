@@ -85,17 +85,17 @@ async def transcribe_audio(
     config: ConfigDependency,
     request: Request,
     file: UploadFile,
-    model: Annotated[ModelName, Form()] = None,
-    language: Annotated[Language, Form()] = None,
-    prompt: Annotated[str, Form()] = None,
-    response_format: Annotated[ResponseFormat, Form()] = None,
+    model: Annotated[ModelName | None, Form()] = None,
+    language: Annotated[Language | None, Form()] = None,
+    prompt: Annotated[str | None, Form()] = None,
+    response_format: Annotated[ResponseFormat | None, Form()] = None,
     temperature: Annotated[float, Form()] = 0.0,
     timestamp_granularities: Annotated[
         list[Literal["segment", "word"]],
         Form(alias="timestamp_granularities[]"),
     ] = ["segment"],
     stream: Annotated[bool, Form()] = False,
-    hotwords: Annotated[str, Form()] = None,
+    hotwords: Annotated[str | None, Form()] = None,
     suppress_numerals: Annotated[bool, Form()] = True,
     highlight_words: Annotated[bool, Form()] = False,
     align: Annotated[bool, Form()] = True,
@@ -105,24 +105,17 @@ async def transcribe_audio(
     model, language, response_format = apply_defaults(config, model, language, response_format)
     timestamp_granularities = await get_timestamp_granularities(request)
     request_id = request.state.request_id
-    logger.info(f"Request ID: {request_id} - Received transcription request")
+    logger.info(f"Request ID: {request_id} - Received transcription request for {file.filename}")
     start_time = time.time()  # Start the timer
     logger.info(
-        f"Request ID: {request_id} - Received request to transcribe {file.filename} with parameters: \
-        model: {model}, \
-        language: {language}, \
-        prompt: {prompt}, \
-        response_format: {response_format}, \
-        temperature: {temperature}, \
-        timestamp_granularities: {timestamp_granularities}, \
-        stream: {stream}, \
-        hotwords: {hotwords}, \
-        suppress_numerals: {suppress_numerals}, \
-        highlight_words: {highlight_words}, \
-        align: {align}, \
-        diarize: {diarize}, \
-        chunk_size: {chunk_size}"
+        f"Request ID: {request_id} - Parameters: "
+        f"model={model}, language={language}, response_format={response_format}, "
+        f"temperature={temperature}, timestamp_granularities={timestamp_granularities}, "
+        f"stream={stream}, suppress_numerals={suppress_numerals}, highlight_words={highlight_words}, "
+        f"align={align}, diarize={diarize}, chunk_size={chunk_size}"
     )
+    # Log sensitive parameters at DEBUG level only
+    logger.debug(f"Request ID: {request_id} - Sensitive params: prompt={prompt}, hotwords={hotwords}")
 
     if not align:
         if response_format in ("vtt", "srt", "aud", "vtt_json"):
@@ -205,24 +198,22 @@ async def translate_audio(
     config: ConfigDependency,
     request: Request,
     file: UploadFile,
-    model: Annotated[ModelName, Form()] = None,
+    model: Annotated[ModelName | None, Form()] = None,
     prompt: Annotated[str, Form()] = "",
-    response_format: Annotated[ResponseFormat, Form()] = None,
+    response_format: Annotated[ResponseFormat | None, Form()] = None,
     temperature: Annotated[float, Form()] = 0.0,
     chunk_size: Annotated[int, Form()] = 30,
 ) -> Response:
     model, _, response_format = apply_defaults(config, model, language=None, response_format=response_format)
     request_id = request.state.request_id
-    logger.info(f"Request ID: {request_id} - Received translation request")
+    logger.info(f"Request ID: {request_id} - Received translation request for {file.filename}")
     start_time = time.time()  # Start the timer
     logger.info(
-        f"Request ID: {request_id} - Received request to translate {file.filename} with parameters: \
-        model: {model}, \
-        prompt: {prompt}, \
-        response_format: {response_format}, \
-        temperature: {temperature}, \
-        chunk_size: {chunk_size}"
+        f"Request ID: {request_id} - Parameters: "
+        f"model={model}, response_format={response_format}, temperature={temperature}, chunk_size={chunk_size}"
     )
+    # Log sensitive parameters at DEBUG level only
+    logger.debug(f"Request ID: {request_id} - Sensitive params: prompt={prompt}")
 
     # Build ASR options
     asr_options = {

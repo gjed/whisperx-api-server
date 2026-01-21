@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -164,24 +165,24 @@ class WhisperConfig(BaseModel):
     cpu_threads: int = Field(default=0)
     num_workers: int = Field(default=1)
     vad_method: VadMethod = Field(default=VadMethod.PYANNOTE)
-    vad_model: str = Field(default=None)
-    vad_options: dict = Field(default=None)
+    vad_model: str | None = Field(default=None)
+    vad_options: dict[str, Any] | None = Field(default=None)
     cache: bool = Field(default=True)
-    preload_model: str = Field(default=None)
+    preload_model: str | None = Field(default=None)
     local_files_only: bool = Field(default=False)
-    download_root: str = Field(default=None)
+    download_root: str | None = Field(default=None)
 
 
 class AlignConfig(BaseModel):
-    models: dict = Field(default_factory=dict)
-    whitelist: list = Field(default_factory=list)
+    models: dict[str, str] = Field(default_factory=dict)
+    whitelist: list[str] = Field(default_factory=list)
     cache: bool = Field(default=True)
-    preload_model: str = Field(default=None)
+    preload_model: str | None = Field(default=None)
 
 
 class DiarizeConfig(BaseModel):
     cache: bool = Field(default=True)
-    preload_model: str = Field(default=None)
+    preload_model: str | None = Field(default=None)
 
 
 class Config(BaseSettings):

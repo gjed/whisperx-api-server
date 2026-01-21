@@ -34,7 +34,15 @@ transcribe_pipeline_instances = {}
 transcribe_locks = defaultdict(Lock)
 
 
-def unload_model_object(model_obj: Any):
+def unload_model_object(model_obj: Any) -> None:
+    """Unload a model object from GPU memory.
+
+    Accepts Any type as different model types (whisper, alignment, diarization)
+    don't share a common base class but all support the .to() method for device transfer.
+
+    Args:
+        model_obj: A model object with a .to() method (torch-based models)
+    """
     if model_obj is None:
         return
     # 1) Move to CPU
