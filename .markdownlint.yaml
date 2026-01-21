@@ -116,3 +116,6 @@ MD049:
 # MD050 - Strong style should be consistent
 MD050:
   style: asterisk
+
+# MD060 - Table column count - all rows must have same number of columns
+MD060: true
