@@ -35,6 +35,12 @@ COPY requirements.txt constraints.txt ./
 
 RUN pip install --no-cache-dir -c constraints.txt -r requirements.txt
 
+# Apply patch to fix pyannote-audio 4.x compatibility with whisperx
+# The patch removes deprecated use_auth_token argument
+RUN WHISPERX_PATH=$(python3 -c "import whisperx; import os; print(os.path.dirname(whisperx.__file__))") && \
+    sed -i 's/vad_model = Model.from_pretrained(model_fp, use_auth_token=use_auth_token)/vad_model = Model.from_pretrained(model_fp)/g' "${WHISPERX_PATH}/vads/pyannote.py" && \
+    sed -i 's/super().__init__(segmentation=segmentation, fscore=fscore, use_auth_token=use_auth_token, \*\*inference_kwargs)/super().__init__(segmentation=segmentation, fscore=fscore, **inference_kwargs)/g' "${WHISPERX_PATH}/vads/pyannote.py"
+
 FROM base AS runtime
 
 COPY --from=python-env /workspace/venv /workspace/venv
