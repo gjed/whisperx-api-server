@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import gc
 import logging
 from asyncio import Lock
@@ -46,8 +45,10 @@ def unload_model_object(model_obj: Any) -> None:
     if model_obj is None:
         return
     # 1) Move to CPU
-    with contextlib.suppress(Exception):
+    try:
         model_obj.to("cpu")
+    except Exception as e:
+        logger.debug(f"Could not move model to CPU during unload: {e}")
     # 2) Delete reference
     del model_obj
 
