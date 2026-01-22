@@ -13,12 +13,18 @@ class ResponseFormat(str, Enum):
     SRT = "srt"
     VTT = "vtt"
     AUD = "aud"  # Audacity
+    # Markdown conversation formats
+    MD_BASIC = "md_basic"  # Simple paragraphs with Speaker: text
+    MD_LIST = "md_list"  # Bullet list format
+    MD_QUOTE = "md_quote"  # Blockquote with bold speaker names
+    MD_TABLE = "md_table"  # Two-column table (best for 2 speakers)
 
 
 class MediaType(str, Enum):
     APPLICATION_JSON = "application/json"
     TEXT_PLAIN = "text/plain"
     TEXT_VTT = "text/vtt"
+    TEXT_MARKDOWN = "text/markdown"
 
 
 class Language(str, Enum):
